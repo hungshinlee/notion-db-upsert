@@ -1,5 +1,8 @@
 # notion-db-upsert
 
+![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 A lightweight Python CLI and library for querying and inserting rows into a [Notion](https://notion.so) Database via the official Notion API.
 
 ## Features
