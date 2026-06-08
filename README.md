@@ -147,24 +147,85 @@ Created page: https://app.notion.com/p/...
 
 `notion_db.py` can be imported directly into your own scripts.
 
-```python
-from notion_db import field_exists, add_page, list_schema
+### Upsert pattern (check → add)
 
-# Check if a playlist ID already exists
-if not field_exists("id", "PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK"):
-    add_page({
+The most common use case: insert a row only if it does not already exist,
+and report the outcome either way.
+
+```python
+from notion_db import field_exists, add_page
+
+PLAYLIST = {
+    "id": "PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK",
+    "playlist_name": "市井豪門",
+    "channel_name": "民視戲劇館 Formosa TV Dramas",
+    "genre": "drama",
+    "spoken_language": ["Taigi"],
+    "caption_language": ["Mandarin"],
+    "caption_kind": "CC",
+    "url": "https://youtube.com/playlist?list=PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK",
+}
+
+if field_exists("id", PLAYLIST["id"]):
+    print(f"[SKIP] '{PLAYLIST['id']}' already exists in the database.")
+else:
+    page = add_page(PLAYLIST)
+    print(f"[ADDED] {page['url']}")
+```
+
+#### Batch upsert
+
+When you have a list of items to sync, iterate and upsert each one:
+
+```python
+from notion_db import field_exists, add_page
+
+playlists = [
+    {
         "id": "PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK",
         "playlist_name": "市井豪門",
+        "channel_name": "民視戲劇館 Formosa TV Dramas",
         "genre": "drama",
         "spoken_language": ["Taigi"],
         "caption_language": ["Mandarin"],
         "caption_kind": "CC",
-        "channel_name": "民視戲劇館 Formosa TV Dramas",
         "url": "https://youtube.com/playlist?list=PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK",
-    })
+    },
+    {
+        "id": "PLдругой",
+        "playlist_name": "另一部劇",
+        "channel_name": "台視",
+        "genre": "drama",
+        "spoken_language": ["Mandarin"],
+        "caption_language": ["Mandarin"],
+        "caption_kind": "CC",
+        "url": "https://youtube.com/playlist?list=PLдругой",
+    },
+    # ... more items
+]
 
-# Inspect schema programmatically
-schema = list_schema()  # {"id": "title", "url": "url", ...}
+added, skipped = 0, 0
+for item in playlists:
+    if field_exists("id", item["id"]):
+        print(f"[SKIP]  {item['id']}")
+        skipped += 1
+    else:
+        page = add_page(item)
+        print(f"[ADDED] {item['id']} → {page['url']}")
+        added += 1
+
+print(f"\nDone — {added} added, {skipped} skipped.")
+```
+
+### Inspect schema programmatically
+
+```python
+from notion_db import list_schema
+
+schema = list_schema()
+# {"id": "title", "playlist_name": "rich_text", "genre": "select", ...}
+for name, ptype in schema.items():
+    print(f"{name}: {ptype}")
 ```
 
 ### API Reference
