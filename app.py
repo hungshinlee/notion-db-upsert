@@ -44,7 +44,7 @@ def on_check(token: str, db_id: str, schema: dict, field: str, value: str):
 
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(title="Notion DB Manager", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Notion DB Manager") as demo:
 
         # ── Persistent state ────────────────────────────────────────────────
         token_state = gr.State(_DEFAULT_TOKEN)
@@ -90,24 +90,21 @@ def build_app() -> gr.Blocks:
             # ── Tab 2: Check ───────────────────────────────────────────────
             with gr.Tab("Check — 查詢"):
                 gr.Markdown("確認某欄位的值是否已存在於資料庫。")
+                check_field = gr.Dropdown(
+                    label="欄位",
+                    choices=[],
+                    interactive=True,
+                    info="Connect 後即可選擇欄位",
+                )
+                check_value = gr.Textbox(label="搜尋值")
+                check_btn = gr.Button("查詢", variant="primary")
+                check_result = gr.Textbox(label="結果", interactive=False)
 
-                @gr.render(inputs=schema_state)
-                def render_check(schema: dict):
-                    if not schema:
-                        gr.Markdown("*請先 Connect 連線。*")
-                        return
-
-                    field_choices = list(schema.keys())
-                    field_dd = gr.Dropdown(label="欄位", choices=field_choices)
-                    value_box = gr.Textbox(label="搜尋值")
-                    check_btn = gr.Button("查詢", variant="primary")
-                    check_result = gr.Textbox(label="結果", interactive=False)
-
-                    check_btn.click(
-                        on_check,
-                        inputs=[token_state, dbid_state, schema_state, field_dd, value_box],
-                        outputs=[check_result],
-                    )
+                check_btn.click(
+                    on_check,
+                    inputs=[token_state, dbid_state, schema_state, check_field, check_value],
+                    outputs=[check_result],
+                )
 
             # ── Tab 3: Add ─────────────────────────────────────────────────
             with gr.Tab("Add — 新增"):
@@ -182,16 +179,24 @@ def build_app() -> gr.Blocks:
         # ── Connect wiring ───────────────────────────────────────────────────
         def _on_connect(token, db_id):
             status, rows, schema = on_connect(token, db_id)
-            return status, rows, token, db_id, schema
+            field_choices = list(schema.keys()) if schema else []
+            return (
+                status,
+                rows,
+                token,
+                db_id,
+                schema,
+                gr.update(choices=field_choices, value=None),
+            )
 
         connect_btn.click(
             _on_connect,
             inputs=[token_input, dbid_input],
-            outputs=[connect_status, schema_table, token_state, dbid_state, schema_state],
+            outputs=[connect_status, schema_table, token_state, dbid_state, schema_state, check_field],
         )
 
     return demo
 
 
 if __name__ == "__main__":
-    build_app().launch()
+    build_app().launch(theme=gr.themes.Soft())
