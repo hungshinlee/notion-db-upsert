@@ -121,7 +121,10 @@ def build_app() -> gr.Blocks:
 
                     components: dict[str, gr.components.Component] = {}
 
-                    for name, ptype in schema.items():
+                    sorted_schema = dict(
+                        sorted(schema.items(), key=lambda kv: 0 if kv[1] == "title" else 1)
+                    )
+                    for name, ptype in sorted_schema.items():
                         label = f"{name}  `{ptype}`"
                         match ptype:
                             case "checkbox":
@@ -146,7 +149,7 @@ def build_app() -> gr.Blocks:
 
                     def do_add(*values):
                         props: dict = {}
-                        for (name, ptype), val in zip(schema.items(), values):
+                        for (name, ptype), val in zip(sorted_schema.items(), values):
                             # Skip empty optional fields
                             if val is None or val == "" or val == []:
                                 continue
