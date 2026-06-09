@@ -4,15 +4,16 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Notion](https://img.shields.io/badge/Notion-API-black?logo=notion&logoColor=white)
 ![Poetry](https://img.shields.io/badge/poetry-managed-60A5FA?logo=poetry&logoColor=white)
+![Gradio](https://img.shields.io/badge/Gradio-GUI-orange?logo=gradio&logoColor=white)
 
-A lightweight Python CLI and library for querying and inserting rows into a [Notion](https://notion.so) Database via the official Notion API.
+A lightweight Python CLI, library, and Gradio web GUI for querying and inserting rows into a [Notion](https://notion.so) Database via the official Notion API.
 
 ## Features
 
 - Check whether a specific field value already exists in the database
 - Insert a new row with arbitrary property values
 - Inspect the database schema (property names and types) at any time
-- Usable both as a **CLI tool** and as a **Python library**
+- Usable as a **CLI tool**, a **Python library**, or a **Gradio web GUI**
 
 ## Requirements
 
@@ -233,6 +234,23 @@ for name, ptype in schema.items():
     print(f"{name}: {ptype}")
 ```
 
+### `NotionDB` class
+
+When credentials come from user input rather than environment variables, use the `NotionDB` class directly:
+
+```python
+from notion_db import NotionDB
+
+db = NotionDB(
+    token="ntn_...",
+    database_id="30e31197d5d783e7b2e301cac70fa22c",
+)
+
+schema = db.list_schema()
+exists = db.field_exists("id", "PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK")
+page   = db.add_page({"id": "PLxxx", "playlist_name": "新節目", ...})
+```
+
 ### API Reference
 
 #### `field_exists(field_key, field_value) -> bool`
@@ -262,6 +280,53 @@ Returns a `{property_name: property_type}` mapping for the configured database.
 
 ---
 
+## Gradio GUI
+
+A web-based GUI is available for users who prefer a visual interface over the CLI.
+
+### Launch
+
+```bash
+poetry run python app.py
+```
+
+Then open **http://127.0.0.1:7860** in your browser.
+
+### Interface
+
+The app has three tabs:
+
+| Tab | 功能 |
+|-----|------|
+| **Schema** | 連線後列出所有欄位名稱與型別 |
+| **Check** | 從下拉選單選擇欄位，輸入搜尋值，確認是否存在 |
+| **Add** | 依照 schema 動態產生表單，填值後新增一筆資料 |
+
+### Credentials
+
+- If a `.env` file is present, the Token and Database ID fields are **pre-filled** automatically.
+- The Token field uses `type="password"` — the value is masked and never stored to disk by the app.
+- Credentials are kept in browser session state only and discarded when the tab is closed.
+
+### Screenshot
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Notion Database Manager                                │
+│                                                         │
+│  Token ●●●●●●●●●●●  Database ID ──────  [Connect]      │
+│  狀態: ✅ 連線成功，共 9 個欄位。                         │
+│                                                         │
+│  ┌─Schema──┬─Check──┬─Add──────────────────────────┐   │
+│  │ 欄位名稱 │  型別  │                              │   │
+│  │ id      │ title  │                              │   │
+│  │ url     │ url    │  ...                         │   │
+│  └─────────┴────────┴──────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Notes
 
 - **Notion API version**: `notion-client` v3 defaults to the `2025-09-03` API, which removed the `databases/{id}/query` endpoint. This project pins to `2022-06-28` to retain full query support.
@@ -276,8 +341,9 @@ notion-db-upsert/
 ├── .gitignore
 ├── pyproject.toml     # Poetry project definition
 ├── poetry.lock        # Pinned dependency versions
-├── notion_db.py       # Core library: field_exists, add_page, list_schema
-└── main.py            # CLI entry point
+├── notion_db.py       # Core library: NotionDB class + module-level helpers
+├── main.py            # CLI entry point
+└── app.py             # Gradio web GUI
 ```
 
 ## License

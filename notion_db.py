@@ -12,113 +12,76 @@ load_dotenv()
 # Pin to the stable 2022-06-28 API that still exposes properties + query.
 _NOTION_VERSION = "2022-06-28"
 
-_client: Client | None = None
 
+class NotionDB:
+    """Client bound to a specific Notion integration token and database."""
 
-def _get_client() -> Client:
-    global _client
-    if _client is None:
-        token = os.environ["NOTION_TOKEN"]
-        _client = Client(auth=token, notion_version=_NOTION_VERSION)
-    return _client
+    def __init__(self, token: str, database_id: str):
+        self._client = Client(auth=token, notion_version=_NOTION_VERSION)
+        self._db_id = database_id
 
+    def list_schema(self) -> dict[str, str]:
+        """Return a mapping of property names → types."""
+        db_meta = self._client.databases.retrieve(database_id=self._db_id)
+        return {name: meta["type"] for name, meta in db_meta["properties"].items()}
 
-def _get_database_id() -> str:
-    return os.environ["NOTION_DATABASE_ID"]
+    def field_exists(self, field_key: str, field_value: Any) -> bool:
+        """Return True if at least one row has field_key equal to field_value."""
+        schema = self.list_schema()
+        if field_key not in schema:
+            raise ValueError(f"Property '{field_key}' not found in database schema.")
 
+        prop_type = schema[field_key]
+        filter_obj = self._build_filter(field_key, prop_type, field_value)
+        pages = self._query(filter_obj)
+        return len(pages) > 0
 
-def _query_database(filter_obj: dict | None = None) -> list[dict]:
-    """Run a database query and return all matching page objects."""
-    client = _get_client()
-    db_id = _get_database_id()
-    body: dict[str, Any] = {}
-    if filter_obj:
-        body["filter"] = filter_obj
+    def add_page(self, properties: dict[str, Any]) -> dict:
+        """Insert a new row and return the created Notion page object."""
+        schema = self.list_schema()
+        notion_props: dict[str, Any] = {}
+        for key, value in properties.items():
+            if key not in schema:
+                raise ValueError(f"Property '{key}' not found in database schema.")
+            notion_props[key] = _encode_property(schema[key], value)
 
-    result = client.request(
-        path=f"databases/{db_id}/query",
-        method="POST",
-        body=body,
-    )
-    return result.get("results", [])
+        return self._client.pages.create(
+            parent={"database_id": self._db_id},
+            properties=notion_props,
+        )
 
+    def _query(self, filter_obj: dict | None = None) -> list[dict]:
+        body: dict[str, Any] = {}
+        if filter_obj:
+            body["filter"] = filter_obj
+        result = self._client.request(
+            path=f"databases/{self._db_id}/query",
+            method="POST",
+            body=body,
+        )
+        return result.get("results", [])
 
-def field_exists(field_key: str, field_value: Any) -> bool:
-    """Check if a row exists where field_key equals field_value.
-
-    Args:
-        field_key: The property name to search (e.g. "id", "url").
-        field_value: The value to match against.
-
-    Returns:
-        True if at least one matching row exists, False otherwise.
-    """
-    schema = list_schema()
-    if field_key not in schema:
-        raise ValueError(f"Property '{field_key}' not found in database schema.")
-
-    prop_type = schema[field_key]
-
-    if prop_type == "title":
-        filter_obj = {"property": field_key, "title": {"equals": str(field_value)}}
-    elif prop_type == "rich_text":
-        filter_obj = {"property": field_key, "rich_text": {"equals": str(field_value)}}
-    elif prop_type == "number":
-        filter_obj = {"property": field_key, "number": {"equals": field_value}}
-    elif prop_type == "checkbox":
-        filter_obj = {"property": field_key, "checkbox": {"equals": bool(field_value)}}
-    elif prop_type == "select":
-        filter_obj = {"property": field_key, "select": {"equals": str(field_value)}}
-    elif prop_type == "url":
-        filter_obj = {"property": field_key, "url": {"equals": str(field_value)}}
-    elif prop_type == "email":
-        filter_obj = {"property": field_key, "email": {"equals": str(field_value)}}
-    elif prop_type == "phone_number":
-        filter_obj = {"property": field_key, "phone_number": {"equals": str(field_value)}}
-    else:
-        raise ValueError(f"field_exists does not support property type '{prop_type}'.")
-
-    pages = _query_database(filter_obj)
-    return len(pages) > 0
-
-
-def add_page(properties: dict[str, Any]) -> dict:
-    """Add a new page (row) to the database.
-
-    Args:
-        properties: A dict mapping property names to plain Python values.
-                    Strings, numbers, booleans, and lists of strings (for
-                    multi_select) are all supported.
-
-    Returns:
-        The created page object from the Notion API.
-
-    Example:
-        add_page({
-            "id": "PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK",
-            "playlist_name": "市井豪門",
-            "genre": "drama",
-            "spoken_language": ["Taigi"],
-            "caption_language": ["Mandarin"],
-            "caption_kind": "CC",
-            "url": "https://youtube.com/playlist?list=PL02zpjjwMEjp_X-66jIMYOtgdgK46rNsK",
-        })
-    """
-    client = _get_client()
-    db_id = _get_database_id()
-    schema = list_schema()
-
-    notion_props: dict[str, Any] = {}
-    for key, value in properties.items():
-        if key not in schema:
-            raise ValueError(f"Property '{key}' not found in database schema.")
-        notion_props[key] = _encode_property(schema[key], value)
-
-    response = client.pages.create(
-        parent={"database_id": db_id},
-        properties=notion_props,
-    )
-    return response
+    @staticmethod
+    def _build_filter(field_key: str, prop_type: str, field_value: Any) -> dict:
+        match prop_type:
+            case "title":
+                return {"property": field_key, "title": {"equals": str(field_value)}}
+            case "rich_text":
+                return {"property": field_key, "rich_text": {"equals": str(field_value)}}
+            case "number":
+                return {"property": field_key, "number": {"equals": field_value}}
+            case "checkbox":
+                return {"property": field_key, "checkbox": {"equals": bool(field_value)}}
+            case "select":
+                return {"property": field_key, "select": {"equals": str(field_value)}}
+            case "url":
+                return {"property": field_key, "url": {"equals": str(field_value)}}
+            case "email":
+                return {"property": field_key, "email": {"equals": str(field_value)}}
+            case "phone_number":
+                return {"property": field_key, "phone_number": {"equals": str(field_value)}}
+            case _:
+                raise ValueError(f"field_exists does not support property type '{prop_type}'.")
 
 
 def _encode_property(prop_type: str, value: Any) -> dict:
@@ -151,8 +114,24 @@ def _encode_property(prop_type: str, value: Any) -> dict:
             raise ValueError(f"Unsupported property type: '{prop_type}'")
 
 
+# ---------------------------------------------------------------------------
+# Module-level helpers — read credentials from .env (used by the CLI)
+# ---------------------------------------------------------------------------
+
+def _env_db() -> NotionDB:
+    return NotionDB(
+        token=os.environ["NOTION_TOKEN"],
+        database_id=os.environ["NOTION_DATABASE_ID"],
+    )
+
+
 def list_schema() -> dict[str, str]:
-    """Return a mapping of property names → types for the configured database."""
-    client = _get_client()
-    db_meta = client.databases.retrieve(database_id=_get_database_id())
-    return {name: meta["type"] for name, meta in db_meta["properties"].items()}
+    return _env_db().list_schema()
+
+
+def field_exists(field_key: str, field_value: Any) -> bool:
+    return _env_db().field_exists(field_key, field_value)
+
+
+def add_page(properties: dict[str, Any]) -> dict:
+    return _env_db().add_page(properties)
